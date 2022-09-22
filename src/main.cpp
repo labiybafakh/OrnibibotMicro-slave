@@ -29,6 +29,10 @@ struct wing_position{
 
 struct wing_position *p_wing_position = &_wing_position;
 
+static uint8_t threshold_left = 90;
+static uint8_t threshold_right = 44;
+
+
 bool flapMode;
 
 const char* ssid     = "ntlab1802";
@@ -87,8 +91,8 @@ void motorUpdate( void * pvParameters ){
   Serial.println(xPortGetCoreID());
 
   for(;;){
-      _wing_position.left = angle_sensor.getRotationInDegrees();
-      // _wing_position.right = angle_sensor.getRotationInDegrees();
+      _wing_position.left = -(angle_sensor.getRotationInDegrees() - threshold_left);
+      // _wing_position.right = angle_sensor.getRotationInDegrees() - threshold_right;
       delay(1);
       
   }
@@ -116,6 +120,8 @@ void setup()
 
   // // Start to be polite
   nh.advertise(node_wing_left);
+  // nh.advertise(node_wing_right);
+
   
   xTaskCreatePinnedToCore(
                     paramUpdate,   /* Task function. */
