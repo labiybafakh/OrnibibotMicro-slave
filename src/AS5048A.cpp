@@ -364,7 +364,7 @@ uint16_t AS5048A::write(uint16_t registerAddress, uint16_t data)
 void AS5048A::setDelay()
 {
 #if defined(ESP32) || defined(ARDUINO_ARCH_ESP32)
-	this->esp32_delay = 50;
+	this->esp32_delay = 3;
 	if (this->debug)
 	{
 		Serial.println("AS5048A working with ESP32");

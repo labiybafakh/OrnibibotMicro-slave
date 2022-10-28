@@ -4,13 +4,16 @@
 #include <Thread.h>
 #include <ThreadController.h>
 #include "AS5048A.h"
+#include <vector>
+#include <string>
 
 #include "OrnibibBot.hpp"
 
 #include <iostream>
+#include <iomanip>
 #include <ros.h>
-#include <std_msgs/Int16.h>
-#include <std_msgs/Float32.h>
+#include <sensor_msgs/JointState.h>
+#include <ornibibot/joint_data.h>
 #include <geometry_msgs/Twist.h>
 #include <math.h>
 #include <string.h>
@@ -22,15 +25,25 @@ OrnibiBot robot;
 
 AS5048A angle_sensor(SS, true);
 
+char *joint_name[2]={"wing_left", "wing_right"};
+float joint_position[2];
+float previous_joint_position[2];
+float joint_velocity[2];
+float joint_threshold[2];
+
 struct wing_position{
-  int16_t left;
-  int16_t right;
-} _wing_position;
+  float left;
+  float right;
+};
 
-struct wing_position *p_wing_position = &_wing_position;
+struct wing_velocity{
+  float left;
+  float right;
+};
 
-static uint8_t threshold_left = 90;
-static uint8_t threshold_right = 44;
+
+float threshold_left = 1.57;
+float threshold_right = 0.77;
 
 
 bool flapMode;
@@ -44,8 +57,8 @@ const uint16_t serverPort = 11411;
 
 ros::NodeHandle nh;
 // Make a chatter publisher
-std_msgs::Int16 wing_left;
-// std_msgs::Int16 wing_right;
+ornibibot::joint_data wing_left;
+ornibibot::joint_data wing_right;
 
 volatile double freqFlap=4;
 volatile double pTail;
@@ -59,30 +72,49 @@ int* _targetServo = _Servo ;
 
 
 ros::Publisher node_wing_left("wing_left", &wing_left);
-// ros::Publisher node_wing_right("wing_right", &wing_right);
+ros::Publisher node_wing_right("wing_right", &wing_right);
+
+ros::Time current_time, previous_time;
+float dt;
+float *p_dt = &dt;
+
+struct wing_position now_wing_pos, prev_wing_pos;
+struct wing_velocity _wing_velocity;
+
+struct wing_position *p_wing_position = &now_wing_pos;
+struct wing_velocity *p_wing_velocity = &_wing_velocity;
+
 
 
 void paramUpdate( void * pvParameters ){
   Serial.print("Task1 running on core ");
   Serial.println(xPortGetCoreID());
   for(;;){
-    if (nh.connected()) {
+    // if (nh.connected()) {
       digitalWrite(2, HIGH);
 
-      wing_left.data = p_wing_position->left;
-      node_wing_left.publish(&wing_left);
+      current_time = nh.now();
 
-      // wing_right.data = p_wing_position->right;
-      // node_wing_right.publish(&wing_right);
+      //Wing Left
+      // wing_left.header.stamp = current_time; 
+      // wing_left.name.data = "Wing Left";
+      // wing_left.position.data = p_wing_position->left;
+      // wing_left.velocity.data = p_wing_velocity->left;
 
-    }
+      // node_wing_left.publish(&wing_left);
+
+      //Wing Right
+      wing_right.header.stamp = current_time; 
+      wing_right.name.data = "Wing Right";
+      wing_right.position.data = p_wing_position->right;
+      wing_right.velocity.data = p_wing_velocity->right;
+
+      node_wing_right.publish(&wing_right);
+
+    // }
   
-    else {
-      
-      
-    }
-  nh.spinOnce();
-  delay(1);
+    nh.spinOnce();
+    delay(5);
   } 
 }
 
@@ -91,9 +123,16 @@ void motorUpdate( void * pvParameters ){
   Serial.println(xPortGetCoreID());
 
   for(;;){
-      _wing_position.left = -(angle_sensor.getRotationInDegrees() - threshold_left);
-      // _wing_position.right = angle_sensor.getRotationInDegrees() - threshold_right;
-      delay(1);
+      // now_wing_pos.left = -(angle_sensor.getRotationInRadians() - threshold_left);
+      now_wing_pos.right  = angle_sensor.getRotationInRadians() - threshold_right;
+
+      // _wing_velocity.left =  (now_wing_pos.left-prev_wing_pos.left)/0.01;
+      _wing_velocity.right =  (now_wing_pos.right-prev_wing_pos.right)/0.01;
+
+      // prev_wing_pos.left = now_wing_pos.left;
+      prev_wing_pos.right = now_wing_pos.right;
+
+      delay(5);
       
   }
 }
@@ -110,18 +149,11 @@ void setup()
     Serial.print(".");
   }
 
-  // Set the connection to rosserial socket server
   nh.getHardware()->setConnection(server, serverPort);
   nh.initNode();
-
-  // // Another way to get IP
-  // Serial.print("IP = ");
-  // Serial.println(nh.getHardware()->getLocalIP());
-
-  // // Start to be polite
-  nh.advertise(node_wing_left);
-  // nh.advertise(node_wing_right);
-
+  // nh.setSpinTimeout(15);
+  // nh.advertise(node_wing_left);
+  nh.advertise(node_wing_right);
   
   xTaskCreatePinnedToCore(
                     paramUpdate,   /* Task function. */
@@ -142,7 +174,7 @@ void setup()
                     1);          /* pin task to core 0 */
   delay(500);
 
-
+  // nh.spinOnce();
 }
 
 void loop()
